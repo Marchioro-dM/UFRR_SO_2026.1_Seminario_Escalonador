@@ -8,12 +8,13 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 #define MAX 100 //isso aqui é pro max fila
-#define QUANTUM 5 //Round robiinnn
+
+#define QUANTUM 3 //Round robiinnn
+
 
 typedef enum{
     PRONTO,
     EXECUTANDO,
-    BLOQUEADO,
     FINALIZADO
 } Estado;
 
@@ -21,8 +22,8 @@ typedef enum{
 typedef struct Processo{ 
     int pid;
     int prioridade;
-    int burst_time;
-    int io_time;
+    int burst_time; //eles estavam aqui na tentativa de fazer um escalonador preemptivo mais robusto (deu errado) REMOVEEEEEERRRR DEPOISSSS
+    int io_time;    //não é usado também  REMOVER ESSAS LINHAS DEPOISS!!!!!!!!!!
     int tempo_restante;
     int pode_executar;
     Estado estado;
@@ -86,59 +87,90 @@ Processo* escolher_processo(Fila* f){ //envia o processo pra CPU e remove ele da
 
 void print_fila(Fila* f){ //função de printagem da fila
     if (!(f_vazia(f))){
+        printf("FILA -");
         for (int i = 0; i < f->tamanho; i++){
-            printf("P%d: prioridade = %d\n", f->itens[i]->pid, f->itens[i]->prioridade);
+            printf("[P%d, PR%d]", f->itens[i]->pid, f->itens[i]->prioridade);
         }
     }
+    printf("\n");
 }
 
 
 void* run_processo(void* arg) {
     Processo* p = (Processo*) arg;
 
-    while (p->tempo_restante > 0) {
+    while (1) { // Alterado para garantir que a thread não morra sem avisar o mutex
 
         pthread_mutex_lock(&mutex);
 
+        // Se o tempo acabou, finaliza a thread corretamente liberando o mutex
+        if (p->tempo_restante <= 0) {
+            p->estado = FINALIZADO;
+            pthread_mutex_unlock(&mutex);
+            break; 
+        }
+
         while (!p->pode_executar) {
             pthread_cond_wait(&cond, &mutex);
+            // Re-checa se deve morrer enquanto esperava
+            if (p->tempo_restante <= 0) {
+                pthread_mutex_unlock(&mutex);
+                return NULL;
+            }
         }
 
+        pthread_mutex_unlock(&mutex);
         int tempo_exec = 0;
 
-        while (tempo_exec < QUANTUM && p->tempo_restante > 0) {
-            printf("P%d executando\n", p->pid);
-
+        // Loop de execução do Quantum
+        while (tempo_exec < QUANTUM) { 
+            pthread_mutex_lock(&mutex);
+            if (p->tempo_restante <= 0) {
+                pthread_mutex_unlock(&mutex);
+                break;
+            }
+            printf("P%d executando| Pr:%d | Tempo restate:%d\n", p->pid,p->prioridade ,p->tempo_restante);
             p->tempo_restante--;
-            tempo_exec++;
-
+            pthread_mutex_unlock(&mutex);
+            
             sleep(1);
+            tempo_exec++;
         }
 
+        pthread_mutex_lock(&mutex);
         p->pode_executar = 0;
-
-        pthread_cond_signal(&cond);
+        cpu_livre = 1;
+        pthread_cond_broadcast(&cond); // Broadcast garante que o Scheduler (main) acorde
         pthread_mutex_unlock(&mutex);
     }
 
-    p->estado = FINALIZADO;
-    printf("P%d finalizado\n", p->pid);
-
+    printf("[P%d] finalizado!\n", p->pid);
     return NULL;
 }
 
+void aplicar_aging(Fila *f) {
+    for (int i = 0; i < f->tamanho; i++) {
+        if(f->itens[i]->prioridade > 0){
+            f->itens[i]->prioridade--; // Aumenta a prioridade de quem ta na lista de espera
+        }
+    }
+}
+
+int cpu_livre = 1;
 Processo* cpu = NULL;
 
 //MAIINNNNNNNNNNNNNNNNNNNN================================== pra nao se perder
 
 int main() { //o main ta baiscamente funcionando como a CPU
 
+    int quantum_count = 0; //bom ter de referencia, e usando pro aging
+
     Fila fila;
     init_fila(&fila);
 
     // Criando processos
     Processo p1 = {1, 3, 5, 0, 5, 0, PRONTO};
-    Processo p2 = {2, 1, 3, 0, 3, 0, PRONTO};
+    Processo p2 = {2, 1, 3, 0, 7, 0, PRONTO};
     Processo p3 = {3, 2, 4, 0, 4, 0, PRONTO};
 
     // Inserindo na fila
@@ -162,38 +194,42 @@ int main() { //o main ta baiscamente funcionando como a CPU
 
         // Se CPU ta livre, pega o próximo da fila
         if (cpu == NULL && !f_vazia(&fila)) {
-            cpu = remover_proc(&fila, 0);
+            cpu = escolher_processo(&fila); //escolhe o processo com maior prioridade
 
-            printf("\n[Scheduler] CPU pegou P%d\n", cpu->pid);
+            printf("\n[Scheduler] P%d esta usando a CPU\n", cpu->pid);
 
             cpu->estado = EXECUTANDO;
             cpu->pode_executar = 1;
+            cpu_livre = 0;
+            pthread_cond_broadcast(&cond); // Acorda a thread específica
         }
-
-        pthread_cond_broadcast(&cond);
-        pthread_mutex_unlock(&mutex);
-
-        //Deixa o processo rodar durante o quantum
-        sleep(QUANTUM);
-
-        pthread_mutex_lock(&mutex);
+        
+        // Espera o processo terminar seu turno ou finalizar
+        while (cpu != NULL && cpu_livre == 0) {
+            pthread_cond_wait(&cond, &mutex);
+        }
+        
+        quantum_count++;
+        if (quantum_count % 2 == 0){
+            aplicar_aging(&fila); //a cada 2 quantums aumenta a prioridade dos itens na fila de espera
+        }
+        printf("\n%dº [QUANTUM finalizado]\n", quantum_count);
 
         if (cpu != NULL) {
-
             if (cpu->tempo_restante > 0) {
                 cpu->estado = PRONTO;
-
-                printf("[Scheduler] P%d voltou pra fila\n", cpu->pid);
-
+                printf("[Scheduler] P%d voltou pra fila\n", cpu->pid);          
                 ins_processo(&fila, cpu);
+                print_fila(&fila);
             } else {
                 cpu->estado = FINALIZADO;
                 printf("[Scheduler] P%d finalizado\n", cpu->pid);
+                pthread_cond_broadcast(&cond); // Acorda a thread para ela poder dar break
             }
-
             cpu = NULL; // libera CPU
+            cpu_livre = 1;
         }
-
+        
         pthread_mutex_unlock(&mutex);
     }
 
