@@ -11,6 +11,8 @@ pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 #define QUANTUM 3 //Round robiinnn
 
+int cpu_livre = 1;// Inicializa a CPU estando livre
+
 
 typedef enum{
     PRONTO,
@@ -156,7 +158,6 @@ void aplicar_aging(Fila *f) {
     }
 }
 
-int cpu_livre = 1;
 Processo* cpu = NULL;
 
 //MAIINNNNNNNNNNNNNNNNNNNN================================== pra nao se perder
@@ -169,14 +170,18 @@ int main() { //o main ta baiscamente funcionando como a CPU
     init_fila(&fila);
 
     // Criando processos
-    Processo p1 = {1, 3, 5, 0, 5, 0, PRONTO};
+    Processo p1 = {1, 4, 5, 0, 5, 0, PRONTO};
     Processo p2 = {2, 1, 3, 0, 7, 0, PRONTO};
-    Processo p3 = {3, 2, 4, 0, 4, 0, PRONTO};
+    Processo p3 = {3, 6, 4, 0, 6, 0, PRONTO};
+    Processo p4 = {4, 0, 3, 2, 10, 0, PRONTO};
+    Processo p5 = {5, 3, 2, 1, 8, 0, PRONTO};
 
     // Inserindo na fila
     ins_processo(&fila, &p1);
     ins_processo(&fila, &p2);
     ins_processo(&fila, &p3);
+    ins_processo(&fila, &p4);
+    ins_processo(&fila, &p5);
 
     printf("Fila inicial:\n");
     print_fila(&fila);
@@ -185,6 +190,8 @@ int main() { //o main ta baiscamente funcionando como a CPU
     pthread_create(&p1.thread, NULL, run_processo, &p1);
     pthread_create(&p2.thread, NULL, run_processo, &p2);
     pthread_create(&p3.thread, NULL, run_processo, &p3);
+    pthread_create(&p4.thread, NULL, run_processo, &p4);
+    pthread_create(&p5.thread, NULL, run_processo, &p5);
 
 
     // Scheduler
@@ -237,6 +244,8 @@ int main() { //o main ta baiscamente funcionando como a CPU
     pthread_join(p1.thread, NULL);
     pthread_join(p2.thread, NULL);
     pthread_join(p3.thread, NULL);
+    pthread_join(p4.thread, NULL);
+    pthread_join(p5.thread, NULL);
 
     printf("\nTodos os processos finalizaram.\n");
 
