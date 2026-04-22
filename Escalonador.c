@@ -24,8 +24,8 @@ typedef enum{
 typedef struct Processo{ 
     int pid;
     int prioridade;
-    int burst_time; //eles estavam aqui na tentativa de fazer um escalonador preemptivo mais robusto (deu errado) REMOVEEEEEERRRR DEPOISSSS
-    int io_time;    //não é usado também  REMOVER ESSAS LINHAS DEPOISS!!!!!!!!!!
+    int burst_time; //eles estavam aqui na tentativa de fazer um escalonador preemptivo mais robusto (deu errado)
+    int io_time;    //não é usado também
     int tempo_restante;
     int pode_executar;
     Estado estado;
@@ -55,7 +55,7 @@ Processo* remover_proc(Fila* f, int remov){
     Processo *p = f->itens[remov];
 
     for (int i = remov; i < f->tamanho-1; i++){
-        f->itens[i] = f->itens[i+1]; //joga todos os itens pra "frente" depois de remover 1
+        f->itens[i] = f->itens[i+1]; //joga todos os itens pra frente depois de mandar um pra CPU
     }
     f->tamanho--;
     return p;
@@ -142,7 +142,7 @@ void* run_processo(void* arg) {
         pthread_mutex_lock(&mutex);
         p->pode_executar = 0;
         cpu_livre = 1;
-        pthread_cond_broadcast(&cond); // Broadcast garante que o Scheduler (main) acorde
+        pthread_cond_broadcast(&cond); // Esse broadcast é pra acordar o escalonador denovo
         pthread_mutex_unlock(&mutex);
     }
 
@@ -162,9 +162,9 @@ Processo* cpu = NULL;
 
 //MAIINNNNNNNNNNNNNNNNNNNN================================== pra nao se perder
 
-int main() { //o main ta baiscamente funcionando como a CPU
+int main() { //o main ta baiscamente funcionando como o Escalonador
 
-    int quantum_count = 0; //bom ter de referencia, e usando pro aging
+    int quantum_count = 0; //bom ter de referencia, é usando pro aging
 
     Fila fila;
     init_fila(&fila);
